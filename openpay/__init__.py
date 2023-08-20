@@ -10,6 +10,7 @@ country = "mx"
 # Resource
 
 from openpay.resource import (  # noqa
+    AccountInfo, 
     Card, Charge, Customer, Plan, Transfer,
     Fee, BankAccount, Payout, Subscription, Pse, Token, Checkout, Webhook)
 

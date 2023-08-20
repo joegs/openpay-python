@@ -60,7 +60,7 @@ def _build_api_url(url, query):
 
 class APIClient(object):
 
-    def __init__(self, key=None, client=None, test_mode=False):
+    def __init__(self, key, client=None, test_mode=False):
         self.api_key = key
 
         from openpay import verify_ssl_certs
@@ -69,7 +69,7 @@ class APIClient(object):
         self._client = client or http_client.new_default_http_client(
             verify_ssl_certs=verify_ssl_certs)
 
-    def request(self, method, url, params=None):
+    def request(self, method, url, api_key=None, params=None):
         rbody, rcode, my_api_key = self.request_raw(
             method.lower(), url, params)
         resp = self.interpret_response(rbody, rcode)
@@ -96,7 +96,7 @@ class APIClient(object):
                     'description'),
                     resp['error_code']), rbody, rcode, resp)
 
-    def request_raw(self, method, url, params=None):
+    def request_raw(self, method, url, api_key=None, params=None):
         """
         Mechanism for issuing an API call
         """
@@ -105,7 +105,6 @@ class APIClient(object):
         if self.api_key:
             my_api_key = self.api_key
         else:
-            from openpay import api_key
             my_api_key = api_key
 
         if my_api_key is None:
