@@ -2,3 +2,5 @@
 *.pyc
 *.egg*
 *.bak
+openpaymodule.py
+test.py
