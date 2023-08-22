@@ -20,7 +20,7 @@ from openpay.util import utf8, logger
 
 def convert_to_openpay_object(resp, api_key, item_type=None):
     types = {'charge': Charge, 'customer': Customer,
-             'plan': Plan, 'transfer': Transfer, 
+             'plan': Plan, 'transfer': Transfer,
              'list': ListObject,
              'card': Card, 'payout': Payout, 'subscription': Subscription,
              'bank_account': BankAccount, 'fee': Fee, 'pse': Pse, 'checkout': Checkout,
@@ -58,7 +58,6 @@ class BaseObject(dict):
 
         object.__setattr__(self, 'api_key', api_key)
         object.__setattr__(self, 'merchant_id', merchant_id)
-
 
         if id:
             self['id'] = id
@@ -143,7 +142,7 @@ class BaseObject(dict):
             params = self._retrieve_params
 
         requestor = api.APIClient(api_key)
-        response, api_key = requestor.request(method, url, params)
+        response, api_key = requestor.request(method, url, api_key, params)
 
         if isinstance(response, list):
             for item in response:
@@ -195,7 +194,8 @@ class APIResource(BaseObject):
         return instance
 
     def refresh(self, api_key, merchant_id, id):
-        self.refresh_from(values=self.request('get', self.instance_url(merchant_id, id), api_key), api_key=api_key)
+        url = self.instance_url(merchant_id, id)
+        self.refresh_from(values=self.request('get', url, api_key), api_key=api_key)
         return self
 
     @classmethod
@@ -232,21 +232,22 @@ class APIResource(BaseObject):
         response = "%s/%s" % (base, extn)
         return response
 
+
 class ListObject(BaseObject):
 
-    def all(self, api_key, **params):
-        return self.request('get', self['url'], api_key, params)
+    def all(self, api_key=None, merchant_id=None, **params):
+        return self.request('get', self['url'], self.api_key, params)
 
-    def create(self, **params):
-        return self.request('post', self['url'], params)
+    def create(self, api_key=None, merchant_id=None, **params):
+        return self.request('post', self['url'], self.api_key, params)
 
-    def retrieve(self, id, **params):
+    def retrieve(self, id, api_key=None, merchant_id=None, **params):
         base = self.get('url')
         id = utf8(id)
         extn = quote_plus(id)
         url = "%s/%s" % (base, extn)
 
-        return self.request('get', url, params)
+        return self.request('get', url, api_key, params)
 
 
 class SingletonAPIResource(APIResource):
@@ -257,7 +258,7 @@ class SingletonAPIResource(APIResource):
             None, api_key=api_key)
 
     @classmethod
-    def class_url(cls, merchant_id) :
+    def class_url(cls, merchant_id):
         cls_name = cls.class_name()
         return "/v1/{0}/{1}".format(merchant_id, cls_name)
 
@@ -299,7 +300,7 @@ class CreateableAPIResource(APIResource):
         if "clean_params" in dir(cls):
             params = cls.clean_params(params)
 
-        response, api_key = requestor.request('post', url, params)
+        response, api_key = requestor.request('post', url, api_key, params)
         klass_name = cls.__name__.lower()
         return convert_to_openpay_object(response, api_key, klass_name)
 
@@ -320,8 +321,8 @@ class UpdateableAPIResource(APIResource):
             else:
                 updated_params.update({'status': None})
 
-            self.refresh_from(self.request('put', self.instance_url(merchant_id=merchant_id), api_key,
-                                           updated_params), api_key=api_key)
+            url = self.instance_url(merchant_id)
+            self.refresh_from(self.request('put', url, api_key, updated_params), api_key=api_key)
         else:
             logger.debug("Trying to save already saved object %r", self)
         return self
@@ -362,14 +363,14 @@ class DeletableAPIResource(APIResource):
 
 class AccountInfo(ListableAPIResource):
     @classmethod
-    def class_url(cls, merchant_id) :
+    def class_url(cls, merchant_id):
         return f"/v1/{merchant_id}"
 
     @classmethod
-    def all(cls, **params):
-        requestor = api.APIClient(cls.api_key)
-        url = cls.class_url()
-        response, api_key = requestor.request("get", url, params)
+    def all(cls, api_key, merchant_id, **params):
+        requestor = api.APIClient(api_key)
+        url = cls.class_url(merchant_id)
+        response, api_key = requestor.request("get", url, api_key, params)
         return response
 
 
@@ -392,7 +393,7 @@ class Card(ListableAPIResource, UpdateableAPIResource,
         return "%s/%s/cards/%s" % (Customer.class_url(merchant_id), self.customer, extn)
 
     @classmethod
-    def retrieve(cls, id, api_key=None, **params):
+    def retrieve(cls, id, api_key, merchant_id, **params):
         raise NotImplementedError(
             "Can't retrieve a card without a customer ID. Use "
             "customer.cards.retrieve('card_id') instead.")
@@ -461,8 +462,7 @@ class Charge(CreateableAPIResource, ListableAPIResource,
         return self.dispute
 
     @classmethod
-    def as_merchant(cls):
-
+    def as_merchant(cls, api_key=None):
         params = {}
         if hasattr(cls, 'api_key'):
             api_key = cls.api_key
@@ -543,7 +543,7 @@ class Customer(CreateableAPIResource, UpdateableAPIResource,
     def payouts(self):
         data = {
             'object': 'list',
-            'url': Payout.class_url({'customer': self.id}),
+            'url': Payout.class_url(self.merchant_id, {'customer': self.id}),
             'count': 0,
             'item_type': 'payout'
         }
@@ -557,7 +557,7 @@ class Customer(CreateableAPIResource, UpdateableAPIResource,
     def bank_accounts(self):
         data = {
             'object': 'list',
-            'url': BankAccount.class_url({'customer': self.id}),
+            'url': BankAccount.class_url(self.merchant_id, {'customer': self.id}),
             'count': 0,
             'item_type': 'bank_account'
         }
@@ -571,7 +571,7 @@ class Customer(CreateableAPIResource, UpdateableAPIResource,
     def subscriptions(self):
         data = {
             'object': 'list',
-            'url': Subscription.class_url({'customer': self.id}),
+            'url': Subscription.class_url(self.merchant_id, {'customer': self.id}),
             'count': 0,
             'item_type': 'subscription'
         }
@@ -586,7 +586,7 @@ class Customer(CreateableAPIResource, UpdateableAPIResource,
         data = {
             'object': 'list',
             'count': 0,
-            'url':Pse.build_url(self.id),
+            'url': Pse.build_url(self.id, self.merchant_id),
             'item_type': 'pse'
         }
         if not hasattr(self, '_pse'):
@@ -598,7 +598,7 @@ class Customer(CreateableAPIResource, UpdateableAPIResource,
         data = {
             'object': 'list',
             'count': 0,
-            'url':Checkout.build_url(self.id),
+            'url': Checkout.build_url(self.id),
             'item_type': 'checkout'
         }
         if not hasattr(self, '_checkouts'):
@@ -625,7 +625,7 @@ class BankAccount(CreateableAPIResource, UpdateableAPIResource,
         else:
             self.customer = utf8(self.customer_id)
 
-        base = Customer.class_url()
+        base = Customer.class_url(self.merchant_id)
         cust_extn = self.customer
         extn = quote_plus(self.id)
 
@@ -695,7 +695,7 @@ class Pse(CreateableAPIResource):
         return openpay_object
 
     @classmethod
-    def build_url(cls, customer_id=None):
+    def build_url(cls, customer_id=None, merchant_id=None):
         if customer_id == None:
             return "/v1/{0}/charges".format(merchant_id, customer_id)
         else:
@@ -704,19 +704,19 @@ class Pse(CreateableAPIResource):
 
 class Webhook(CreateableAPIResource, ListableAPIResource, DeletableAPIResource):
     @classmethod
-    def retrieve(cls, webhook_id=None, api_key=None, **params):
-        api_key = getattr(cls, 'api_key', openpay.api_key)
+    def retrieve(cls, api_key, merchant_id, webhook_id=None, **params):
         requestor = api.APIClient(api_key)
-        url = cls.build_url(webhook_id)
-        response, api_key = requestor.request('get', url, params)
+        url = cls.build_url(webhook_id, merchant_id)
+        response, api_key = requestor.request('get', url, api_key, params)
         return convert_to_openpay_object(response, api_key, 'checkout')
 
     @classmethod
-    def build_url(cls, webhook_id):
+    def build_url(cls, webhook_id, merchant_id):
         if webhook_id is None:
             return "/v1/{0}/webhooks".format(merchant_id)
         if webhook_id is not None:
             return "/v1/{0}/webhooks/{1}".format(merchant_id, webhook_id)
+
 
 class Checkout(CreateableAPIResource,
                UpdateableAPIResource, ListableAPIResource):
@@ -742,7 +742,7 @@ class Checkout(CreateableAPIResource,
         return convert_to_openpay_object(response, api_key, 'checkout')
 
     @classmethod
-    def build_url(cls, checkout_id=None, customer=None):
+    def build_url(cls, merchant_id, checkout_id=None, customer=None):
         if checkout_id is None and customer is None:
             return "/v1/{0}/checkouts".format(merchant_id)
         if customer is not None:
@@ -798,6 +798,7 @@ class Checkout(CreateableAPIResource,
         base = self.class_url()
         extn = quote_plus(id)
         return "%s/%s?status=%s" % (base, extn, status)
+
 
 class Token(CreateableAPIResource):
     pass

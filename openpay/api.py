@@ -69,9 +69,9 @@ class APIClient(object):
         self._client = client or http_client.new_default_http_client(
             verify_ssl_certs=verify_ssl_certs)
 
-    def request(self, method, url, api_key=None, params=None):
+    def request(self, method, url, api_key, params=None):
         rbody, rcode, my_api_key = self.request_raw(
-            method.lower(), url, params)
+            method.lower(), url, api_key, params)
         resp = self.interpret_response(rbody, rcode)
         return resp, my_api_key
 
